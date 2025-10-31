@@ -1,4 +1,4 @@
-name: Build EXE
+name: Build EXE (Windows Compatible)
 
 on:
   push:
@@ -12,10 +12,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python 3.9 (for Win7 compatibility)
         uses: actions/setup-python@v4
         with:
-          python-version: 3.11
+          python-version: 3.9
 
       - name: Install dependencies
         run: |
@@ -23,11 +23,11 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Build exe
-        run: pyinstaller --onefile --windowed main.py
+      - name: Build EXE
+        run: pyinstaller --onefile --windowed main.py --name BankSoalApp
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BankSoalWindows-EXE
-          path: dist/main.exe
+          name: BankSoalApp-Windows
+          path: dist/BankSoalApp.exe
