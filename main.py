@@ -1,221 +1,195 @@
-# main.py
-# برنامه ویندوزی آفلاین بانک سوال با PyQt5
-# تمام امکانات: ورود، دسته‌بندی، جستجو، حذف، ویرایش، جدول، پرینت PDF
-
 import sys
-import csv
-import os
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QPushButton, QLineEdit,
-                             QLabel, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
-                             QMessageBox, QComboBox, QFileDialog, QInputDialog)
-from PyQt5.QtCore import Qt
-from fpdf import FPDF
+from PyQt5.QtWidgets import (
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout,
+    QPushButton, QLineEdit, QTableWidget, QTableWidgetItem,
+    QLabel, QInputDialog, QMessageBox, QComboBox
+)
+from banksoal_v3 import QuestionBank
 
-DATABASE_FILE = "database.csv"
-CATEGORY_FILE = "categories.csv"
-
-class BankSoalApp(QMainWindow):
+class BankSoalApp(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("BankSoal App")
-        self.setGeometry(100, 100, 900, 600)
-        self.categories = []
-        self.load_categories()
+        self.setWindowTitle("بانک سوالات")
+        self.resize(900, 600)
+
+        # کلاس مدیریت بانک سوالات
+        self.bank = QuestionBank()
+        self.current_data = self.bank.list_questions()
+
         self.initUI()
-        self.load_data()
+        self.load_table(self.current_data)
 
     def initUI(self):
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
         layout = QVBoxLayout()
 
-        # فرم ورود سوال
-        form_layout = QHBoxLayout()
-        self.question_input = QLineEdit()
-        self.question_input.setPlaceholderText("متن سوال")
-        self.answer_input = QLineEdit()
-        self.answer_input.setPlaceholderText("پاسخ صحیح")
-        self.option1_input = QLineEdit()
-        self.option1_input.setPlaceholderText("گزینه ۱")
-        self.option2_input = QLineEdit()
-        self.option2_input.setPlaceholderText("گزینه ۲")
-        self.option3_input = QLineEdit()
-        self.option3_input.setPlaceholderText("گزینه ۳")
-        self.category_combo = QComboBox()
-        self.category_combo.addItems(self.categories)
-        self.source_input = QLineEdit()
-        self.source_input.setPlaceholderText("منبع / کتاب")
+        # بالای صفحه: جست‌وجو و فیلتر
+        filter_layout = QHBoxLayout()
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("جست‌وجو...")
+        self.search_input.textChanged.connect(self.search_questions)
+        filter_layout.addWidget(QLabel("جست‌وجو:"))
+        filter_layout.addWidget(self.search_input)
 
-        form_layout.addWidget(self.question_input)
-        form_layout.addWidget(self.answer_input)
-        form_layout.addWidget(self.option1_input)
-        form_layout.addWidget(self.option2_input)
-        form_layout.addWidget(self.option3_input)
-        form_layout.addWidget(self.category_combo)
-        form_layout.addWidget(self.source_input)
+        # فیلتر ستون‌ها
+        self.column_filter = QComboBox()
+        self.column_filter.addItems(["Question","Answer","Option1","Option2","Option3","Category","Source"])
+        self.filter_input = QLineEdit()
+        self.filter_input.setPlaceholderText("مقدار فیلتر...")
+        filter_btn = QPushButton("فیلتر")
+        filter_btn.clicked.connect(self.apply_column_filter)
+        filter_layout.addWidget(QLabel("فیلتر ستون:"))
+        filter_layout.addWidget(self.column_filter)
+        filter_layout.addWidget(self.filter_input)
+        filter_layout.addWidget(filter_btn)
 
-        layout.addLayout(form_layout)
+        layout.addLayout(filter_layout)
 
-        # دکمه‌ها
-        button_layout = QHBoxLayout()
-        add_btn = QPushButton("افزودن سوال")
-        add_btn.clicked.connect(self.add_question)
-        edit_btn = QPushButton("ویرایش سوال انتخابی")
-        edit_btn.clicked.connect(self.edit_question)
-        delete_btn = QPushButton("حذف سوال انتخابی")
-        delete_btn.clicked.connect(self.delete_question)
-        search_btn = QPushButton("جستجو")
-        search_btn.clicked.connect(self.search_questions)
-        print_btn = QPushButton("پرینت PDF")
-        print_btn.clicked.connect(self.print_pdf)
-        manage_cat_btn = QPushButton("مدیریت دسته‌بندی")
-        manage_cat_btn.clicked.connect(self.manage_categories)
-
-        button_layout.addWidget(add_btn)
-        button_layout.addWidget(edit_btn)
-        button_layout.addWidget(delete_btn)
-        button_layout.addWidget(search_btn)
-        button_layout.addWidget(print_btn)
-        button_layout.addWidget(manage_cat_btn)
-
-        layout.addLayout(button_layout)
-
-        # جدول نمایش سوال‌ها
+        # جدول نمایش سوالات
         self.table = QTableWidget()
-        self.table.setColumnCount(7)
-        self.table.setHorizontalHeaderLabels(["سوال", "پاسخ صحیح", "گزینه ۱", "گزینه ۲", "گزینه ۳", "دسته‌بندی", "منبع"])
-        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.table.setSelectionBehavior(QTableWidget.SelectRows)
         layout.addWidget(self.table)
 
-        central_widget.setLayout(layout)
+        # دکمه‌ها
+        btn_layout = QHBoxLayout()
+        add_btn = QPushButton("افزودن سوال")
+        add_btn.clicked.connect(self.add_question)
+        edit_btn = QPushButton("ویرایش سوال")
+        edit_btn.clicked.connect(self.edit_question)
+        delete_btn = QPushButton("حذف سوال")
+        delete_btn.clicked.connect(self.delete_question)
+        reset_btn = QPushButton("بازگشت به حالت اولیه")
+        reset_btn.clicked.connect(self.reset_view)
 
-    # مدیریت دسته‌بندی
-    def load_categories(self):
-        if os.path.exists(CATEGORY_FILE):
-            with open(CATEGORY_FILE, newline='', encoding='utf-8') as f:
-                self.categories = [row[0] for row in csv.reader(f)]
+        pdf_btn = QPushButton("خروجی PDF")
+        pdf_btn.clicked.connect(self.export_pdf)
+        word_btn = QPushButton("خروجی Word")
+        word_btn.clicked.connect(self.export_word)
+
+        select_btn = QPushButton("انتخاب سوال‌ها")
+        select_btn.clicked.connect(self.select_questions)
+
+        btn_layout.addWidget(add_btn)
+        btn_layout.addWidget(edit_btn)
+        btn_layout.addWidget(delete_btn)
+        btn_layout.addWidget(reset_btn)
+        btn_layout.addWidget(pdf_btn)
+        btn_layout.addWidget(word_btn)
+        btn_layout.addWidget(select_btn)
+        layout.addLayout(btn_layout)
+
+        self.setLayout(layout)
+
+    # بارگذاری جدول
+    def load_table(self, data):
+        self.table.setRowCount(len(data))
+        self.table.setColumnCount(len(data.columns))
+        self.table.setHorizontalHeaderLabels(data.columns.tolist())
+        for i, (_, row) in enumerate(data.iterrows()):
+            for j, col in enumerate(data.columns):
+                self.table.setItem(i, j, QTableWidgetItem(str(row[col])))
+
+    # جست‌وجو
+    def search_questions(self):
+        text = self.search_input.text()
+        if text:
+            filtered = self.bank.questions[self.bank.questions.apply(lambda row: row.astype(str).str.contains(text, case=False).any(), axis=1)]
         else:
-            self.categories = ["عمومی"]
-            self.save_categories()
+            filtered = self.bank.questions
+        self.current_data = filtered
+        self.load_table(self.current_data)
 
-    def save_categories(self):
-        with open(CATEGORY_FILE, "w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            for cat in self.categories:
-                writer.writerow([cat])
-
-    def manage_categories(self):
-        text, ok = QInputDialog.getText(self, "مدیریت دسته‌بندی", "دسته‌بندی جدید:")
-        if ok and text:
-            if text not in self.categories:
-                self.categories.append(text)
-                self.save_categories()
-                self.category_combo.addItem(text)
-                QMessageBox.information(self, "موفق", "دسته‌بندی اضافه شد.")
-            else:
-                QMessageBox.warning(self, "خطا", "این دسته‌بندی قبلاً وجود دارد.")
-
-    # بارگذاری و ذخیره داده‌ها
-    def load_data(self):
-        self.table.setRowCount(0)
-        if os.path.exists(DATABASE_FILE):
-            with open(DATABASE_FILE, newline='', encoding='utf-8') as f:
-                reader = csv.reader(f)
-                for row_data in reader:
-                    row = self.table.rowCount()
-                    self.table.insertRow(row)
-                    for col, item in enumerate(row_data):
-                        self.table.setItem(row, col, QTableWidgetItem(item))
-
-    def save_data(self):
-        with open(DATABASE_FILE, "w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            for row in range(self.table.rowCount()):
-                row_data = []
-                for col in range(self.table.columnCount()):
-                    row_data.append(self.table.item(row, col).text())
-                writer.writerow(row_data)
+    # فیلتر ستون
+    def apply_column_filter(self):
+        column = self.column_filter.currentText()
+        value = self.filter_input.text()
+        if value:
+            filtered = self.bank.filter_questions(**{column: value})
+        else:
+            filtered = self.bank.questions
+        self.current_data = filtered
+        self.load_table(self.current_data)
 
     # افزودن سوال
     def add_question(self):
-        row = self.table.rowCount()
-        self.table.insertRow(row)
-        self.table.setItem(row, 0, QTableWidgetItem(self.question_input.text()))
-        self.table.setItem(row, 1, QTableWidgetItem(self.answer_input.text()))
-        self.table.setItem(row, 2, QTableWidgetItem(self.option1_input.text()))
-        self.table.setItem(row, 3, QTableWidgetItem(self.option2_input.text()))
-        self.table.setItem(row, 4, QTableWidgetItem(self.option3_input.text()))
-        self.table.setItem(row, 5, QTableWidgetItem(self.category_combo.currentText()))
-        self.table.setItem(row, 6, QTableWidgetItem(self.source_input.text()))
-        self.save_data()
-        QMessageBox.information(self, "موفق", "سوال اضافه شد.")
-        self.clear_inputs()
+        cols = ["Question","Answer","Option1","Option2","Option3","Category","Source"]
+        data = {}
+        for col in cols:
+            text, ok = QInputDialog.getText(self, "افزودن سوال", f"{col}:")
+            if not ok:
+                return
+            data[col] = text
+        self.bank.add_question(data)
+        self.current_data = self.bank.list_questions()
+        self.load_table(self.current_data)
 
     # ویرایش سوال
     def edit_question(self):
         selected = self.table.currentRow()
-        if selected >= 0:
-            self.table.setItem(selected, 0, QTableWidgetItem(self.question_input.text()))
-            self.table.setItem(selected, 1, QTableWidgetItem(self.answer_input.text()))
-            self.table.setItem(selected, 2, QTableWidgetItem(self.option1_input.text()))
-            self.table.setItem(selected, 3, QTableWidgetItem(self.option2_input.text()))
-            self.table.setItem(selected, 4, QTableWidgetItem(self.option3_input.text()))
-            self.table.setItem(selected, 5, QTableWidgetItem(self.category_combo.currentText()))
-            self.table.setItem(selected, 6, QTableWidgetItem(self.source_input.text()))
-            self.save_data()
-            QMessageBox.information(self, "موفق", "سوال ویرایش شد.")
-            self.clear_inputs()
-        else:
-            QMessageBox.warning(self, "خطا", "ابتدا یک سوال را انتخاب کنید.")
+        if selected < 0:
+            QMessageBox.warning(self, "خطا", "یک سوال را انتخاب کنید")
+            return
+        cols = ["Question","Answer","Option1","Option2","Option3","Category","Source"]
+        data = {}
+        for j, col in enumerate(cols):
+            text, ok = QInputDialog.getText(self, "ویرایش سوال", f"{col}:", text=self.current_data.iloc[selected][col])
+            if not ok:
+                return
+            data[col] = text
+        self.bank.questions.iloc[selected] = pd.Series(data)
+        self.bank.save_questions()
+        self.current_data = self.bank.list_questions()
+        self.load_table(self.current_data)
 
     # حذف سوال
     def delete_question(self):
         selected = self.table.currentRow()
-        if selected >= 0:
-            confirm = QMessageBox.question(self, "تایید حذف", "آیا مطمئن هستید؟", QMessageBox.Yes | QMessageBox.No)
-            if confirm == QMessageBox.Yes:
-                self.table.removeRow(selected)
-                self.save_data()
-        else:
-            QMessageBox.warning(self, "خطا", "ابتدا یک سوال را انتخاب کنید.")
+        if selected < 0:
+            QMessageBox.warning(self, "خطا", "یک سوال را انتخاب کنید")
+            return
+        self.bank.questions.drop(self.current_data.index[selected], inplace=True)
+        self.bank.save_questions()
+        self.current_data = self.bank.list_questions()
+        self.load_table(self.current_data)
 
-    # جستجو
-    def search_questions(self):
-        text, ok = QInputDialog.getText(self, "جستجو", "متن یا دسته‌بندی یا منبع:")
-        if ok and text:
-            for row in range(self.table.rowCount()):
-                match = False
-                for col in [0,5,6]:
-                    if text in self.table.item(row, col).text():
-                        match = True
-                        break
-                self.table.setRowHidden(row, not match)
+    # بازگشت به حالت اولیه
+    def reset_view(self):
+        self.bank.reset_view()
+        self.current_data = self.bank.list_questions()
+        self.load_table(self.current_data)
+        self.search_input.clear()
+        self.filter_input.clear()
 
-    # پرینت PDF
-    def print_pdf(self):
-        path, _ = QFileDialog.getSaveFileName(self, "ذخیره PDF", "", "PDF Files (*.pdf)")
-        if path:
-            pdf = FPDF()
-            pdf.add_page()
-            pdf.set_font("Arial", size=12)
-            for row in range(self.table.rowCount()):
-                row_text = ""
-                for col in range(self.table.columnCount()):
-                    row_text += f"{self.table.horizontalHeaderItem(col).text()}: {self.table.item(row,col).text()}  |  "
-                pdf.multi_cell(0, 8, row_text)
-                pdf.ln()
-            pdf.output(path)
-            QMessageBox.information(self, "موفق", "PDF ذخیره شد.")
+    # خروجی PDF
+    def export_pdf(self):
+        filename, ok = QInputDialog.getText(self, "خروجی PDF", "نام فایل خروجی (مثال: output.pdf):")
+        if ok and filename:
+            self.bank.export_pdf(filename)
+            QMessageBox.information(self, "موفقیت", f"فایل PDF با نام {filename} ساخته شد")
 
-    # پاک کردن فیلدها
-    def clear_inputs(self):
-        self.question_input.clear()
-        self.answer_input.clear()
-        self.option1_input.clear()
-        self.option2_input.clear()
-        self.option3_input.clear()
-        self.source_input.clear()
+    # خروجی Word
+    def export_word(self):
+        filename, ok = QInputDialog.getText(self, "خروجی Word", "نام فایل خروجی (مثال: output.docx):")
+        if ok and filename:
+            self.bank.export_word(filename)
+            QMessageBox.information(self, "موفقیت", f"فایل Word با نام {filename} ساخته شد")
+
+    # انتخاب سوال‌ها (دستی یا تصادفی)
+    def select_questions(self):
+        mode, ok = QInputDialog.getItem(self, "انتخاب سوال‌ها", "نوع انتخاب:", ["دستی", "تصادفی"], 0, False)
+        if ok:
+            if mode == "دستی":
+                indices_str, ok = QInputDialog.getText(self, "انتخاب دستی", "شماره سوال‌ها (با ویرگول جدا کنید):")
+                if ok and indices_str:
+                    try:
+                        indices = [int(x.strip())-1 for x in indices_str.split(",")]
+                        self.bank.select_questions(mode="manual", indices=indices)
+                        QMessageBox.information(self, "موفقیت", f"{len(indices)} سوال انتخاب شد")
+                    except:
+                        QMessageBox.warning(self, "خطا", "ورودی نامعتبر")
+            else:  # تصادفی
+                count, ok = QInputDialog.getInt(self, "انتخاب تصادفی", "تعداد سوالات:", 1, 1, len(self.bank.questions))
+                if ok:
+                    self.bank.select_questions(mode="random", count=count)
+                    QMessageBox.information(self, "موفقیت", f"{count} سوال انتخاب شد")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
