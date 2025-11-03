@@ -1,274 +1,141 @@
-# main.py
 import sys
-import pandas as pd
-from PyQt5.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QLineEdit, QTableWidget, QTableWidgetItem,
-    QLabel, QInputDialog, QMessageBox, QComboBox
-)
+from PyQt5 import QtWidgets, QtCore
 from banksoal_v3 import QuestionBank
 
-class BankSoalApp(QWidget):
+class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("بانک سوالات")
-        self.resize(950, 600)
+        self.setWindowTitle("بانک سوالات مدرسه - نسخه نهایی")
+        self.setGeometry(100, 100, 900, 600)
 
-        # کلاس مدیریت بانک سوالات
         self.bank = QuestionBank()
-        self.current_data = self.bank.list_questions()
 
-        self.initUI()
-        self.load_table(self.current_data)
+        # ---- ویجت‌ها ----
+        central_widget = QtWidgets.QWidget()
+        self.setCentralWidget(central_widget)
+        layout = QtWidgets.QVBoxLayout(central_widget)
 
-    def initUI(self):
-        layout = QVBoxLayout()
+        # نوار دکمه‌ها
+        button_layout = QtWidgets.QHBoxLayout()
+        layout.addLayout(button_layout)
 
-        # بالای صفحه: جست‌وجو و فیلتر
-        filter_layout = QHBoxLayout()
-        self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("جست‌وجو...")
-        self.search_input.textChanged.connect(self.search_questions)
-        filter_layout.addWidget(QLabel("جست‌وجو:"))
-        filter_layout.addWidget(self.search_input)
+        self.btn_add = QtWidgets.QPushButton("افزودن سوال")
+        self.btn_save = QtWidgets.QPushButton("ذخیره")
+        self.btn_reset = QtWidgets.QPushButton("بازگشت به حالت اولیه")
+        self.btn_search = QtWidgets.QPushButton("جستجو")
+        self.btn_pdf = QtWidgets.QPushButton("خروجی PDF")
+        self.btn_word = QtWidgets.QPushButton("خروجی Word")
+        self.btn_random = QtWidgets.QPushButton("انتخاب تصادفی سوالات")
 
-        # فیلتر ستون‌ها
-        self.column_filter = QComboBox()
-        self.column_filter.addItems(["Question","Answer","Option1","Option2","Option3","Category","Source"])
-        self.filter_input = QLineEdit()
-        self.filter_input.setPlaceholderText("مقدار فیلتر...")
-        filter_btn = QPushButton("فیلتر")
-        filter_btn.clicked.connect(self.apply_column_filter)
-        filter_layout.addWidget(QLabel("فیلتر ستون:"))
-        filter_layout.addWidget(self.column_filter)
-        filter_layout.addWidget(self.filter_input)
-        filter_layout.addWidget(filter_btn)
+        for b in [self.btn_add, self.btn_save, self.btn_reset, self.btn_search, self.btn_pdf, self.btn_word, self.btn_random]:
+            button_layout.addWidget(b)
 
-        layout.addLayout(filter_layout)
-
-        # جدول نمایش سوالات
-        self.table = QTableWidget()
+        # جدول
+        self.table = QtWidgets.QTableWidget()
         layout.addWidget(self.table)
 
-        # دکمه‌ها
-        btn_layout = QHBoxLayout()
-        add_btn = QPushButton("افزودن سوال")
-        add_btn.clicked.connect(self.add_question)
-        edit_btn = QPushButton("ویرایش سوال")
-        edit_btn.clicked.connect(self.edit_question)
-        delete_btn = QPushButton("حذف سوال")
-        delete_btn.clicked.connect(self.delete_question)
-        reset_btn = QPushButton("بازگشت به حالت اولیه")
-        reset_btn.clicked.connect(self.reset_view)
+        # فیلتر بالای جدول
+        filter_layout = QtWidgets.QHBoxLayout()
+        layout.addLayout(filter_layout)
+        self.filter_label = QtWidgets.QLabel("فیلتر بر اساس:")
+        self.filter_input = QtWidgets.QLineEdit()
+        self.filter_column = QtWidgets.QComboBox()
+        self.filter_column.addItems(["Question", "Answer", "Category", "Source"])
+        self.filter_btn = QtWidgets.QPushButton("اعمال فیلتر")
+        filter_layout.addWidget(self.filter_label)
+        filter_layout.addWidget(self.filter_column)
+        filter_layout.addWidget(self.filter_input)
+        filter_layout.addWidget(self.filter_btn)
 
-        pdf_btn = QPushButton("خروجی PDF")
-        pdf_btn.clicked.connect(self.export_pdf)
-        word_btn = QPushButton("خروجی Word")
-        word_btn.clicked.connect(self.export_word)
+        # بارگذاری داده‌ها
+        self.refresh_table()
 
-        select_btn = QPushButton("انتخاب سوال‌ها")
-        select_btn.clicked.connect(self.select_questions)
+        # اتصال دکمه‌ها
+        self.btn_add.clicked.connect(self.add_question)
+        self.btn_save.clicked.connect(self.save)
+        self.btn_pdf.clicked.connect(self.export_pdf)
+        self.btn_word.clicked.connect(self.export_word)
+        self.btn_search.clicked.connect(self.search)
+        self.btn_reset.clicked.connect(self.reset_view)
+        self.btn_random.clicked.connect(self.select_random)
+        self.filter_btn.clicked.connect(self.apply_filter)
 
-        btn_layout.addWidget(add_btn)
-        btn_layout.addWidget(edit_btn)
-        btn_layout.addWidget(delete_btn)
-        btn_layout.addWidget(reset_btn)
-        btn_layout.addWidget(pdf_btn)
-        btn_layout.addWidget(word_btn)
-        btn_layout.addWidget(select_btn)
-        layout.addLayout(btn_layout)
+    # ---- متدها ----
+    def refresh_table(self, data=None):
+        if data is None:
+            data = self.bank.questions
+        self.table.setRowCount(len(data))
+        self.table.setColumnCount(len(data.columns))
+        self.table.setHorizontalHeaderLabels(data.columns)
 
-        self.setLayout(layout)
+        for i, row in data.iterrows():
+            for j, value in enumerate(row):
+                self.table.setItem(i, j, QtWidgets.QTableWidgetItem(str(value)))
 
-    # بارگذاری جدول (شماره ردیف نمایش داده می‌شود)
-    def load_table(self, data: pd.DataFrame):
-        data = data.reset_index()  # keep original index in 'index' column
-        rows = len(data)
-        cols = len(data.columns) - 1  # exclude the added 'index' column for headerlabels
-        self.table.clear()
-        self.table.setRowCount(rows)
-        self.table.setColumnCount(cols + 1)  # add a leading "No" column
-        headers = ["No"] + [c for c in data.columns if c != "index"]
-        self.table.setHorizontalHeaderLabels(headers)
+        self.table.resizeColumnsToContents()
 
-        for i, (_, row) in enumerate(data.iterrows()):
-            # No column
-            self.table.setItem(i, 0, QTableWidgetItem(str(i+1)))
-            col_j = 1
-            for col in data.columns:
-                if col == "index":
-                    continue
-                val = str(row[col]) if pd.notna(row[col]) else ""
-                self.table.setItem(i, col_j, QTableWidgetItem(val))
-                col_j += 1
-
-        # store the displayed DataFrame to be able to map selection -> original index label
-        self.displayed_df = data  # has 'index' column (original labels)
-
-    # جست‌وجو
-    def search_questions(self):
-        text = self.search_input.text().strip()
-        if text:
-            filtered = self.bank.questions[self.bank.questions.apply(lambda row: row.astype(str).str.contains(text, case=False, na=False).any(), axis=1)]
-        else:
-            filtered = self.bank.questions
-        self.current_data = filtered
-        self.load_table(self.current_data)
-
-    # فیلتر ستون
-    def apply_column_filter(self):
-        column = self.column_filter.currentText()
-        value = self.filter_input.text().strip()
-        if value:
-            filtered = self.bank.filter_questions(**{column: value})
-        else:
-            filtered = self.bank.questions
-        self.current_data = filtered
-        self.load_table(self.current_data)
-
-    # افزودن سوال
     def add_question(self):
-        cols = ["Question","Answer","Option1","Option2","Option3","Category","Source"]
-        data = {}
-        for col in cols:
-            text, ok = QInputDialog.getText(self, "افزودن سوال", f"{col}:")
-            if not ok:
-                return
-            data[col] = text
-        ok_bool, err = self.bank.add_question(data)
-        if not ok_bool:
-            QMessageBox.critical(self, "خطا در افزودن", f"خطا: {err}")
-            return
-        saved, err = self.bank.save_questions()
-        if not saved:
-            QMessageBox.critical(self, "خطا در ذخیره", f"خطا: {err}")
-        self.current_data = self.bank.list_questions()
-        self.load_table(self.current_data)
+        row = {col: "" for col in self.bank.questions.columns}
+        success, err = self.bank.add_question(row)
+        if success:
+            self.refresh_table()
+        else:
+            QtWidgets.QMessageBox.warning(self, "خطا", err)
 
-    # ویرایش سوال
-    def edit_question(self):
-        selected = self.table.currentRow()
-        if selected < 0:
-            QMessageBox.warning(self, "خطا", "یک سوال را انتخاب کنید")
-            return
-        # original index label for the selected displayed row
-        orig_label = self.displayed_df.at[selected, "index"]
-        cols = ["Question","Answer","Option1","Option2","Option3","Category","Source"]
-        data = {}
-        for j, col in enumerate(cols):
-            current_text = str(self.bank.questions.at[orig_label, col]) if orig_label in self.bank.questions.index else ""
-            text, ok = QInputDialog.getText(self, "ویرایش سوال", f"{col}:", text=current_text)
-            if not ok:
-                return
-            data[col] = text
-        try:
-            # use .loc with label to update
-            for k, v in data.items():
-                self.bank.questions.at[orig_label, k] = v
-            saved, err = self.bank.save_questions()
-            if not saved:
-                QMessageBox.critical(self, "خطا در ذخیره", f"خطا: {err}")
-        except Exception as e:
-            QMessageBox.critical(self, "خطا", f"خطا در ویرایش: {e}")
-            return
-        self.current_data = self.bank.list_questions()
-        self.load_table(self.current_data)
+    def save(self):
+        success, err = self.bank.save_questions()
+        if success:
+            QtWidgets.QMessageBox.information(self, "ذخیره شد", "سوالات با موفقیت ذخیره شدند.")
+        else:
+            QtWidgets.QMessageBox.warning(self, "خطا در ذخیره", err)
 
-    # حذف سوال
-    def delete_question(self):
-        selected = self.table.currentRow()
-        if selected < 0:
-            QMessageBox.warning(self, "خطا", "یک سوال را انتخاب کنید")
-            return
-        orig_label = self.displayed_df.at[selected, "index"]
-        reply = QMessageBox.question(self, "تایید حذف", "آیا از حذف این سوال مطمئن هستید؟", QMessageBox.Yes | QMessageBox.No)
-        if reply == QMessageBox.Yes:
-            try:
-                self.bank.questions = self.bank.questions.drop(index=orig_label)
-                self.bank.questions.reset_index(drop=True, inplace=True)  # reindex so labels remain simple
-                saved, err = self.bank.save_questions()
-                if not saved:
-                    QMessageBox.critical(self, "خطا در ذخیره", f"خطا: {err}")
-            except Exception as e:
-                QMessageBox.critical(self, "خطا", f"خطا در حذف: {e}")
-                return
-            self.current_data = self.bank.list_questions()
-            self.load_table(self.current_data)
-
-    # بازگشت به حالت اولیه
-    def reset_view(self):
-        self.bank.reset_view()
-        self.current_data = self.bank.list_questions()
-        self.load_table(self.current_data)
-        self.search_input.clear()
-        self.filter_input.clear()
-
-    # خروجی PDF
     def export_pdf(self):
-        filename, ok = QInputDialog.getText(self, "خروجی PDF", "نام فایل خروجی (مثال: output.pdf):")
-        if ok and filename:
-            if not filename.lower().endswith(".pdf"):
-                filename += ".pdf"
+        filename, _ = QtWidgets.QFileDialog.getSaveFileName(self, "ذخیره به صورت PDF", "", "PDF Files (*.pdf)")
+        if filename:
             success, err = self.bank.export_pdf(filename)
             if success:
-                QMessageBox.information(self, "موفقیت", f"فایل PDF با نام {filename} ساخته شد")
+                QtWidgets.QMessageBox.information(self, "موفق", "خروجی PDF با موفقیت ایجاد شد.")
             else:
-                QMessageBox.critical(self, "خطا در خروجی PDF", f"خروجی ساخته نشد:\n{err}")
+                QtWidgets.QMessageBox.warning(self, "خطا در خروجی", err)
 
-    # خروجی Word
     def export_word(self):
-        filename, ok = QInputDialog.getText(self, "خروجی Word", "نام فایل خروجی (مثال: output.docx):")
-        if ok and filename:
-            if not filename.lower().endswith(".docx"):
-                filename += ".docx"
+        filename, _ = QtWidgets.QFileDialog.getSaveFileName(self, "ذخیره به صورت Word", "", "Word Files (*.docx)")
+        if filename:
             success, err = self.bank.export_word(filename)
             if success:
-                QMessageBox.information(self, "موفقیت", f"فایل Word با نام {filename} ساخته شد")
+                QtWidgets.QMessageBox.information(self, "موفق", "فایل Word با موفقیت ایجاد شد.")
             else:
-                QMessageBox.critical(self, "خطا در خروجی Word", f"خروجی ساخته نشد:\n{err}")
+                QtWidgets.QMessageBox.warning(self, "خطا در خروجی", err)
 
-    # انتخاب سوال‌ها (دستی یا تصادفی)
-    def select_questions(self):
-        mode, ok = QInputDialog.getItem(self, "انتخاب سوال‌ها", "نوع انتخاب:", ["دستی", "تصادفی"], 0, False)
-        if not ok:
-            return
-        if mode == "دستی":
-            indices_str, ok = QInputDialog.getText(self, "انتخاب دستی", "شماره سوال‌ها (همان شماره‌های ستون No؛ با ویرگول جدا کنید):")
-            if ok and indices_str:
-                try:
-                    # parse numbers (1-based displayed)
-                    nums = [int(x.strip()) for x in indices_str.split(",") if x.strip()]
-                    # map displayed numbers to original labels using displayed_df
-                    labels = []
-                    for n in nums:
-                        pos = n - 1
-                        if 0 <= pos < len(self.displayed_df):
-                            labels.append(self.displayed_df.at[pos, "index"])
-                    if not labels:
-                        QMessageBox.warning(self, "هشدار", "هیچ شماره معتبری وارد نشد")
-                        return
-                    ok_bool, err = self.bank.select_questions(mode="manual", indices=labels, indices_are_labels=True)
-                    if not ok_bool:
-                        QMessageBox.critical(self, "خطا در انتخاب", f"خطا: {err}")
-                        return
-                    QMessageBox.information(self, "موفقیت", f"{len(labels)} سوال انتخاب شد")
-                except Exception:
-                    QMessageBox.warning(self, "خطا", "ورودی نامعتبر")
-        else:  # تصادفی
-            try:
-                max_count = len(self.bank.questions)
-                count, ok = QInputDialog.getInt(self, "انتخاب تصادفی", "تعداد سوالات:", 1, 1, max_count)
-                if ok:
-                    ok_bool, err = self.bank.select_questions(mode="random", count=count)
-                    if not ok_bool:
-                        QMessageBox.critical(self, "خطا در انتخاب", f"خطا: {err}")
-                        return
-                    QMessageBox.information(self, "موفقیت", f"{count} سوال انتخاب شد")
-            except Exception as e:
-                QMessageBox.critical(self, "خطا", f"خطا: {e}")
+    def search(self):
+        text, ok = QtWidgets.QInputDialog.getText(self, "جستجو", "عبارت مورد نظر:")
+        if ok and text:
+            filtered = self.bank.filter_questions(Question=text)
+            self.refresh_table(filtered)
+
+    def reset_view(self):
+        self.bank.reset_view()
+        self.refresh_table()
+
+    def select_random(self):
+        count, ok = QtWidgets.QInputDialog.getInt(self, "انتخاب تصادفی", "تعداد سوالات:", min=1, max=len(self.bank.questions))
+        if ok:
+            success, err = self.bank.select_questions(mode="random", count=count)
+            if success:
+                self.refresh_table(self.bank.selected_questions)
+                QtWidgets.QMessageBox.information(self, "موفق", f"{count} سوال به صورت تصادفی انتخاب شد.")
+            else:
+                QtWidgets.QMessageBox.warning(self, "خطا", err)
+
+    def apply_filter(self):
+        col = self.filter_column.currentText()
+        val = self.filter_input.text()
+        filtered = self.bank.filter_questions(**{col: val})
+        self.refresh_table(filtered)
+
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    window = BankSoalApp()
-    window.show()
+    app = QtWidgets.QApplication(sys.argv)
+    win = MainWindow()
+    win.show()
     sys.exit(app.exec_())
